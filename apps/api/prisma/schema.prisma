@@ -1,0 +1,285 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  FARMER
+  UNDERWRITER
+  VERIFIER
+  BUYER
+  ADMIN
+}
+
+enum ChainState {
+  PENDING
+  CONFIRMED
+  REORGED
+  FAILED
+}
+
+enum PolicyState {
+  QUOTED
+  ACTIVE
+  TRIGGERED
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+enum ReviewState {
+  SUBMITTED
+  IN_REVIEW
+  VERIFIED
+  REJECTED
+  DISPUTED
+  APPEALED
+}
+
+model User {
+  id          String             @id @default(uuid())
+  wallet      String             @unique
+  displayName String?
+  role        Role
+  createdAt   DateTime           @default(now())
+  farms       Farm[]
+  evidence    Evidence[]
+  votes       VerificationVote[]
+  stakes      VerifierStake[]
+  purchases   Purchase[]
+  retirements Retirement[]
+  reputation  ReputationEvent[]
+}
+
+model Farm {
+  id        String     @id @default(uuid())
+  ownerId   String
+  owner     User       @relation(fields: [ownerId], references: [id])
+  name      String
+  region    String
+  geohash   String
+  crop      String
+  acreage   Decimal    @db.Decimal(12, 2)
+  createdAt DateTime   @default(now())
+  policies  Policy[]
+  evidence  Evidence[]
+  @@index([ownerId, region])
+}
+
+model Policy {
+  id            String               @id @default(uuid())
+  chainPolicyId BigInt?              @unique
+  farmId        String
+  farm          Farm                 @relation(fields: [farmId], references: [id])
+  crop          String
+  peril         String
+  threshold     Decimal              @db.Decimal(18, 6)
+  coverageMinor BigInt
+  startsAt      DateTime
+  endsAt        DateTime
+  state         PolicyState          @default(QUOTED)
+  txHash        String?              @unique
+  premiums      Premium[]
+  observations  WeatherObservation[]
+  oracleReports OracleReport[]
+  createdAt     DateTime             @default(now())
+  @@index([state, startsAt, endsAt])
+  @@index([farmId, createdAt])
+}
+
+model Premium {
+  id          String    @id @default(uuid())
+  policyId    String
+  policy      Policy    @relation(fields: [policyId], references: [id])
+  amountMinor BigInt
+  paidAt      DateTime?
+  txHash      String?   @unique
+}
+
+model PoolPosition {
+  id             String   @id @default(uuid())
+  wallet         String
+  sharesMinor    BigInt
+  depositedMinor BigInt
+  withdrawnMinor BigInt   @default(0)
+  updatedAt      DateTime @updatedAt
+  @@index([wallet])
+}
+
+model WeatherObservation {
+  id         String   @id @default(uuid())
+  policyId   String?
+  policy     Policy?  @relation(fields: [policyId], references: [id])
+  source     String
+  observedAt DateTime
+  metric     String
+  value      Decimal  @db.Decimal(18, 6)
+  sourceRef  String
+  rawHash    String
+  createdAt  DateTime @default(now())
+  @@unique([source, sourceRef])
+  @@index([metric, observedAt])
+}
+
+model OracleReport {
+  id           String   @id @default(uuid())
+  policyId     String
+  policy       Policy   @relation(fields: [policyId], references: [id])
+  reportNonce  BigInt   @unique
+  observedAt   DateTime
+  value        Decimal  @db.Decimal(18, 6)
+  sourceCount  Int
+  agreementBps Int
+  signature    String
+  txHash       String?  @unique
+  createdAt    DateTime @default(now())
+  @@index([policyId, observedAt])
+}
+
+model Evidence {
+  id              String             @id @default(uuid())
+  chainEvidenceId BigInt?            @unique
+  submitterId     String
+  submitter       User               @relation(fields: [submitterId], references: [id])
+  farmId          String
+  farm            Farm               @relation(fields: [farmId], references: [id])
+  category        String
+  description     String
+  contentHash     String             @unique
+  metadataCid     String
+  activityDate    DateTime
+  state           ReviewState        @default(SUBMITTED)
+  createdAt       DateTime           @default(now())
+  votes           VerificationVote[]
+  creditBatch     CreditBatch?
+  @@index([state, createdAt])
+  @@index([farmId, category])
+}
+
+model VerificationVote {
+  id         String   @id @default(uuid())
+  evidenceId String
+  evidence   Evidence @relation(fields: [evidenceId], references: [id])
+  verifierId String
+  verifier   User     @relation(fields: [verifierId], references: [id])
+  approve    Boolean
+  reasonCid  String
+  txHash     String?  @unique
+  createdAt  DateTime @default(now())
+  @@unique([evidenceId, verifierId])
+  @@index([verifierId, createdAt])
+}
+
+model VerifierStake {
+  id          String   @id @default(uuid())
+  verifierId  String
+  verifier    User     @relation(fields: [verifierId], references: [id])
+  amountMinor BigInt
+  lockedUntil DateTime
+  txHash      String?  @unique
+  updatedAt   DateTime @updatedAt
+  @@index([verifierId, lockedUntil])
+}
+
+model CreditBatch {
+  id             String       @id @default(uuid())
+  chainBatchId   BigInt       @unique
+  evidenceId     String       @unique
+  evidence       Evidence     @relation(fields: [evidenceId], references: [id])
+  projectId      String
+  methodology    String
+  quantity       BigInt
+  metadataCid    String
+  issuanceTxHash String       @unique
+  listings       Listing[]
+  retirements    Retirement[]
+  createdAt      DateTime     @default(now())
+  @@index([projectId, createdAt])
+}
+
+model Listing {
+  id           String      @id @default(uuid())
+  batchId      String
+  batch        CreditBatch @relation(fields: [batchId], references: [id])
+  sellerWallet String
+  quantity     BigInt
+  priceMinor   BigInt
+  active       Boolean     @default(true)
+  txHash       String      @unique
+  purchases    Purchase[]
+  createdAt    DateTime    @default(now())
+  @@index([active, createdAt])
+}
+
+model Purchase {
+  id         String   @id @default(uuid())
+  listingId  String
+  listing    Listing  @relation(fields: [listingId], references: [id])
+  buyerId    String
+  buyer      User     @relation(fields: [buyerId], references: [id])
+  quantity   BigInt
+  totalMinor BigInt
+  txHash     String   @unique
+  createdAt  DateTime @default(now())
+  @@index([buyerId, createdAt])
+}
+
+model Retirement {
+  id            String      @id @default(uuid())
+  batchId       String
+  batch         CreditBatch @relation(fields: [batchId], references: [id])
+  ownerId       String
+  owner         User        @relation(fields: [ownerId], references: [id])
+  quantity      BigInt
+  beneficiary   String
+  purpose       String
+  certificateId String      @unique
+  txHash        String      @unique
+  createdAt     DateTime    @default(now())
+  @@index([ownerId, createdAt])
+}
+
+model ReputationEvent {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  delta      Int
+  reason     String
+  evidenceId String?
+  txHash     String?
+  createdAt  DateTime @default(now())
+  @@index([userId, createdAt])
+}
+
+model TransactionLog {
+  id            String     @id @default(uuid())
+  chainId       Int
+  blockNumber   BigInt
+  blockHash     String
+  txHash        String
+  logIndex      Int
+  contract      String
+  contractName  String
+  eventName     String
+  payload       Json
+  blockTimestamp DateTime
+  state         ChainState @default(CONFIRMED)
+  confirmations Int        @default(0)
+  createdAt     DateTime   @default(now())
+  @@unique([chainId, txHash, logIndex])
+  @@index([chainId, blockNumber, state])
+  @@index([chainId, contractName, eventName, state])
+  @@index([chainId, blockTimestamp])
+}
+
+model IndexerCursor {
+  chainId                Int      @id
+  lastProcessedBlock     BigInt
+  lastProcessedBlockHash String
+  lastFinalizedBlock     BigInt
+  updatedAt              DateTime @updatedAt
+}

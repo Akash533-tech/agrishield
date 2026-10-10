@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+coverage
+.env
+.env.local
+artifacts
+cache
+typechain-types
+*.log
+.DS_Store
+.agroshield-postgres
+__pycache__/
+*.py[cod]
+test-results/
+playwright-report/
+*.tsbuildinfo

@@ -1,0 +1,19 @@
+{
+  "name": "agroshield",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev -w @agroshield/web",
+    "build": "npm run build -w @agroshield/web",
+    "test": "npm run test -w @agroshield/contracts",
+    "test:web": "npm run test -w @agroshield/web",
+    "typecheck": "npm run typecheck -w @agroshield/web",
+    "contracts:compile": "npm run compile -w @agroshield/contracts"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.2",
+    "postcss": "8.5.29"
+  },
+  "engines": { "node": ">=20" }
+}
